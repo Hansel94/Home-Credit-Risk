@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, OrdinalEncoder
+from sklearn.compose import ColumnTransformer
 
 
 def preprocess_data(
@@ -40,40 +41,39 @@ def preprocess_data(
     working_val_df["DAYS_EMPLOYED"].replace({365243: np.nan}, inplace=True)
     working_test_df["DAYS_EMPLOYED"].replace({365243: np.nan}, inplace=True)
 
-    # 2. TODO Encode string categorical features (dytpe `object`):
-    #     - If the feature has 2 categories encode using binary encoding,
-    #       please use `sklearn.preprocessing.OrdinalEncoder()`. Only 4 columns
-    #       from the dataset should have 2 categories.
-    #     - If it has more than 2 categories, use one-hot encoding, please use
-    #       `sklearn.preprocessing.OneHotEncoder()`. 12 columns
-    #       from the dataset should have more than 2 categories.
-    # Take into account that:
-    #   - You must apply this to the 3 DataFrames (working_train_df, working_val_df,
-    #     working_test_df).
-    #   - In order to prevent overfitting and avoid Data Leakage you must use only
-    #     working_train_df DataFrame to fit the OrdinalEncoder and
-    #     OneHotEncoder classes, then use the fitted models to transform all the
-    #     datasets.
+    # 2. Encode string categorical features:
+    #     - for features with 2 categories binary encoding is used
+    #     - For features with more than 2 categories, one-hot encoding is used
+    df_cats = working_train_df.select_dtypes(object)
+    bin_cols = []
+    mv_cols = []
+    for column in df_cats.columns:
+        if df_cats[column].value_counts().count() == 2:
+            bin_cols.append(column)
+        else:
+            mv_cols.append(column)
+            
+    bin_enc = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)
+    one_hot = OneHotEncoder(handle_unknown='ignore')
+    transformer = ColumnTransformer([('bin_enc', bin_enc, bin_cols),
+                                     ('one_hot', one_hot, mv_cols)],
+                                     remainder='passthrough')
+                                     
+    working_train_df = transformer.fit_transform(working_train_df)
+    working_val_df = transformer.transform(working_val_df)
+    working_test_df = transformer.transform(working_test_df)
 
 
-    # 3. TODO Impute values for all columns with missing data or, just all the columns.
-    # Use median as imputing value. Please use sklearn.impute.SimpleImputer().
-    # Again, take into account that:
-    #   - You must apply this to the 3 DataFrames (working_train_df, working_val_df,
-    #     working_test_df).
-    #   - In order to prevent overfitting and avoid Data Leakage you must use only
-    #     working_train_df DataFrame to fit the SimpleImputer and then use the fitted
-    #     model to transform all the datasets.
+    # 3. Impute values for all columns with missing data using median as imputing value
+    imputer = SimpleImputer(strategy='median')
+    working_train_df = imputer.fit_transform(working_train_df)
+    working_val_df = imputer.transform(working_val_df)
+    working_test_df = imputer.transform(working_test_df)
 
+    # 4. Feature scaling with Min-Max scaler
+    scaler = MinMaxScaler()
+    working_train_df = scaler.fit_transform(working_train_df)
+    working_val_df = scaler.transform(working_val_df)
+    working_test_df = scaler.transform(working_test_df)
 
-    # 4. TODO Feature scaling with Min-Max scaler. Apply this to all the columns.
-    # Please use sklearn.preprocessing.MinMaxScaler().
-    # Again, take into account that:
-    #   - You must apply this to the 3 DataFrames (working_train_df, working_val_df,
-    #     working_test_df).
-    #   - In order to prevent overfitting and avoid Data Leakage you must use only
-    #     working_train_df DataFrame to fit the MinMaxScaler and then use the fitted
-    #     model to transform all the datasets.
-
-
-    return None
+    return working_train_df, working_val_df, working_test_df
